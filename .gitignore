@@ -117,3 +117,8 @@ site/
 # Cache
 .boligping_cache
 .bolig_ping_cache
+data
+data/*
+data/**
+data/** */
+_rejseplanen.py
