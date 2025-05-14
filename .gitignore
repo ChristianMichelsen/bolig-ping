@@ -121,4 +121,7 @@ data
 data/*
 data/**
 data/** */
+*.fgb
 _rejseplanen.py
+_googlemaps.py
+_gis_elevation.py

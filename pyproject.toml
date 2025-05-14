@@ -3,19 +3,25 @@ name = "bolig_ping"
 version = "1.6.1.dev"
 description = "Get a ping when your dream home becomes available."
 readme = "README.md"
-authors = [
-    {name = "Dan Saattrup Nielsen", email = "saattrupdan@gmail.com"},
-]
+authors = [{ name = "Dan Saattrup Nielsen", email = "saattrupdan@gmail.com" }]
 maintainers = [
-    {name = "Dan Saattrup Nielsen", email = "saattrupdan@gmail.com"},
+    { name = "Dan Saattrup Nielsen", email = "saattrupdan@gmail.com" },
 ]
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "beautifulsoup4>=4.13.3",
     "click>=8.1.8",
+    "contextily>=1.6.2",
+    "cyclopts>=3.16.0",
+    "fiona>=1.10.1",
+    "geopandas[all]>=1.0.1",
+    "keplergl>=0.3.7",
+    "loguru>=0.7.3",
+    "matplotlib>=3.10.1",
     "pydantic>=2.10.6",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
+    "selenium>=4.32.0",
     "tqdm>=4.67.1",
     "yagmail>=0.15.293",
 ]
@@ -43,6 +49,8 @@ dev-dependencies = [
     "mkdocs-include-dir-to-nav>=1.2.0",
     "mkapi>=3.0.22",
     "pip>=24.3.1",
+    "ipykernel>=6.29.5",
+    "rich>=14.0.0",
 ]
 
 [project.scripts]
@@ -52,22 +60,14 @@ bolig-ping = "bolig_ping.cli:main"
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-exclude = [
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-]
-extend-include = [
-    "*.ipynb",
-]
+exclude = [".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv"]
+extend-include = ["*.ipynb"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
-skip-magic-trailing-comma = true
+# skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 select = [
@@ -91,12 +91,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"__init__.py" = [
-    "F401",
-]
-"src/scripts/main.py" = [
-    "I",
-]
+"__init__.py" = ["F401"]
+"src/scripts/main.py" = ["I"]
 
 [tool.ruff.lint.isort]
 split-on-trailing-comma = false
@@ -123,10 +119,7 @@ filterwarnings = [
     "ignore::FutureWarning",
 ]
 log_cli_level = "info"
-testpaths = [
-    "tests",
-    "src/bolig_ping",
-]
+testpaths = ["tests", "src/bolig_ping"]
 
 [build-system]
 requires = ["hatchling"]
