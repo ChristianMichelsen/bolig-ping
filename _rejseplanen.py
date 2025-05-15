@@ -8,7 +8,7 @@ from typing import Annotated, Any, Self
 
 import requests
 from dotenv import load_dotenv
-from pydantic import AliasPath, BaseModel, BeforeValidator, Field
+from pydantic import AliasPath, BaseModel, BeforeValidator, Field, computed_field
 from rich import print
 
 # %%
@@ -67,18 +67,6 @@ params = {
 }
 
 
-params = {
-    "accessId": API_KEY,  # Your API key
-    "originCoordLat": "55.697552",  # Origin latitude
-    "originCoordLong": "12.5775693",  # Origin latitude
-    "destId": "8600646",  # (Nørreport st)
-    # "destCoordLat": "55.683597",  # Destination latitude
-    # "destCoordLong": "12.5708992",  # Destination longitude
-    "date": "2025-05-19",  # Monday's date in YYYY-MM-DD format
-    "time": "08:00",  # Time in hh:mm format
-}
-
-
 request = Request(**params)
 response = request.get_response()
 
@@ -96,6 +84,7 @@ class Duration(BaseModel):
     dt: timedelta
     raw: str
 
+    @computed_field
     @property
     def minutes(self) -> float:
         """Get the duration in minutes."""
@@ -150,6 +139,7 @@ class BaseLeg(BaseModel):
     duration: DurationFromStr
     product: LegProduct = Field(validation_alias=AliasPath("Product", 0))
 
+    @computed_field
     @property
     def method(self) -> TransportationMethod:
         """Get the method of transport."""
@@ -210,6 +200,7 @@ class Trip(BaseModel):
     # ctxRecon: str
     # checksum: str
 
+    @computed_field
     @property
     def duration_simple(self) -> float:
         return self.duration.minutes
@@ -237,6 +228,7 @@ class Trip(BaseModel):
         corrected_duration = self.duration_simple - speedup + extra_time
         return corrected_duration
 
+    @computed_field
     @property
     def duration_corrected(self) -> float:
         return self._get_duration_corrected(initial_speed=15, extra_time=1)
@@ -246,13 +238,13 @@ class Trip(BaseModel):
         """Get the methods of transport for the trip."""
         return [leg.method for leg in self.legs]
 
-    @property
-    def only_bus(self) -> bool:
-        """Check if the trip only contains only bus (and walking)."""
-        return all(
-            method in (TransportationMethod.WALK, TransportationMethod.BUS)
-            for method in self.methods
-        )
+    # @property
+    # def only_bus(self) -> bool:
+    #     """Check if the trip only contains only bus (and walking)."""
+    #     return all(
+    #         method in (TransportationMethod.WALK, TransportationMethod.BUS)
+    #         for method in self.methods
+    #     )
 
 
 # %%
@@ -269,19 +261,32 @@ class Journey(BaseModel):
 
     trips: list[Trip] = Field(alias="Trip")
 
+    @computed_field
     @property
     def best_duration_simple(self) -> float:
         """Get the best duration of the trip."""
         best_duration = min([trip.duration_simple for trip in self.trips])
         return best_duration
 
+    @computed_field
     @property
     def best_duration_corrected(self) -> float:
         """Get the best corrected duration of the trip."""
         best_duration = min([trip.duration_corrected for trip in self.trips])
         return best_duration
 
+    def get_fastest_trip_simple(self) -> Trip:
+        """Get the fastest trip based on the simple duration."""
+        fastest_trip = min(self.trips, key=lambda trip: trip.duration_simple)
+        return fastest_trip
+
+    def get_fastest_trip_corrected(self) -> Trip:
+        """Get the fastest trip based on the corrected duration."""
+        fastest_trip = min(self.trips, key=lambda trip: trip.duration_corrected)
+        return fastest_trip
+
 
 journey = Journey(**response)
-trip = journey.trips[0]
+trip = journey.get_fastest_trip_simple()
+trip = journey.get_fastest_trip_corrected()
 print(trip)
