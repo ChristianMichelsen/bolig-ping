@@ -3,6 +3,7 @@
 import os
 import re
 from datetime import timedelta
+from enum import StrEnum
 from typing import Annotated, Any, Self
 
 import requests
@@ -65,6 +66,19 @@ params = {
     "time": "08:00",  # Time in hh:mm format
 }
 
+
+params = {
+    "accessId": API_KEY,  # Your API key
+    "originCoordLat": "55.697552",  # Origin latitude
+    "originCoordLong": "12.5775693",  # Origin latitude
+    "destId": "8600646",  # (Nørreport st)
+    # "destCoordLat": "55.683597",  # Destination latitude
+    # "destCoordLong": "12.5708992",  # Destination longitude
+    "date": "2025-05-19",  # Monday's date in YYYY-MM-DD format
+    "time": "08:00",  # Time in hh:mm format
+}
+
+
 request = Request(**params)
 response = request.get_response()
 
@@ -106,6 +120,26 @@ DurationFromStr = Annotated[Duration, BeforeValidator(Duration.from_string)]
 # %%
 
 
+class TransportationMethod(StrEnum):
+    """Enum for transportation methods."""
+
+    WALK = "prod_walk"
+    BUS = "prod_bus"
+    METRO = "prod_sub"
+    S_TRAIN = "prod_comm"
+    REGIONAL_TRAIN = "prod_ic"
+
+
+class LegProductIcon(BaseModel):
+    res: str
+
+
+class LegProduct(BaseModel):
+    icon: LegProductIcon
+    name: str
+    internalName: str
+
+
 class BaseLeg(BaseModel):
     Origin: dict
     Destination: dict
@@ -114,6 +148,13 @@ class BaseLeg(BaseModel):
     name: str
     type: str
     duration: DurationFromStr
+    product: LegProduct = Field(validation_alias=AliasPath("Product", 0))
+
+    @property
+    def method(self) -> TransportationMethod:
+        """Get the method of transport."""
+        method = self.product.icon.res
+        return TransportationMethod(method)
 
 
 class WalkLeg(BaseLeg):
@@ -122,37 +163,33 @@ class WalkLeg(BaseLeg):
     dist: int
 
 
-class TrainOrBusLeg(BaseLeg):
-    Notes: dict | None
+class JNYLeg(BaseLeg):
+    # JNY (Public Transport) properties
     JourneyDetailRef: dict | None
     JourneyStatus: str | None
-    Product: list[dict] | None
     JourneyDetail: dict | None
     number: str | None
     category: str | None
     reachable: bool | None
     direction: str | None
     directionFlag: str | None
+    Notes: dict | None = None
     minimumChangeDuration: str | None = None
 
 
-def _ensure_proper_leg(value: Any) -> BaseLeg:  # noqa: ANN401
+def _ensure_proper_leg(raw_leg: Any) -> BaseLeg:  # noqa: ANN401
     try:
-        leg = BaseLeg(**value)
+        leg = BaseLeg(**raw_leg)
     except Exception as e:
         raise ValueError(f"Failed to parse leg: {e}")
 
-    if leg.type == "WALK":
-        return WalkLeg(**value)
-    elif leg.type == "JNY":
-        return TrainOrBusLeg(**value)
-    else:
-        print(f"Unknown leg type: {leg.type}")
-        return BaseLeg(**value)
+    if leg.method == "prod_walk":
+        return WalkLeg(**raw_leg)
+
+    return JNYLeg(**raw_leg)
 
 
 Leg = Annotated[BaseLeg, BeforeValidator(_ensure_proper_leg)]
-
 
 # %%
 
@@ -193,6 +230,7 @@ class Trip(BaseModel):
         if not isinstance(first_leg, WalkLeg):
             return self.duration_simple
 
+        # Bike instead of walk
         bike_duration = first_leg.dist / 1000 / (initial_speed / 60)
         walk_duration = first_leg.duration.minutes
         speedup = walk_duration - bike_duration
