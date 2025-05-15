@@ -341,5 +341,3 @@ trip1 = journey.get_fastest_trip_simple()
 trip2 = journey.get_fastest_trip_corrected()
 print(trip1.description)
 print(trip2.description)
-
-# %%
