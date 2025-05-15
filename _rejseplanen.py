@@ -241,6 +241,19 @@ class Trip(BaseModel):
     def duration_corrected(self) -> float:
         return self._get_duration_corrected(initial_speed=15, extra_time=1)
 
+    @property
+    def methods(self) -> list[TransportationMethod]:
+        """Get the methods of transport for the trip."""
+        return [leg.method for leg in self.legs]
+
+    @property
+    def only_bus(self) -> bool:
+        """Check if the trip only contains only bus (and walking)."""
+        return all(
+            method in (TransportationMethod.WALK, TransportationMethod.BUS)
+            for method in self.methods
+        )
+
 
 # %%
 
