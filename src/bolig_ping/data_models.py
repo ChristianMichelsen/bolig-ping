@@ -1,5 +1,6 @@
 """Data models used in the project."""
 
+import datetime
 import logging
 import textwrap
 from typing import Literal, Self
@@ -311,8 +312,8 @@ def get_description_from_result(result: dict) -> str | None:
 class Coordinates(BaseModel):
     """Coordinates for a location."""
 
-    latitude: float
-    longitude: float
+    lat: float
+    lon: float
 
     @computed_field
     @property
@@ -322,7 +323,7 @@ class Coordinates(BaseModel):
         Returns:
             The coordinates as a string.
         """
-        return f"{self.latitude},{self.longitude}"
+        return f"{self.lat},{self.lon}"
 
 
 class SearchImage(BaseModel):
@@ -362,6 +363,7 @@ class Home(BaseModel):
     lot_area: int = Field(ge=0)
     weighted_area: float | None = Field(ge=0)
     image: SearchImage | None
+    last_updated: datetime.date
 
     @classmethod
     def from_nested_dict(cls, result: dict) -> Self:
@@ -385,8 +387,8 @@ class Home(BaseModel):
             energy_label=result.get("energyLabel"),
             per_area_price=result.get("perAreaPrice"),
             coordinates=Coordinates(
-                latitude=result["coordinates"]["lat"],
-                longitude=result["coordinates"]["lon"],
+                lat=result["coordinates"]["lat"],
+                lon=result["coordinates"]["lon"],
             ),
             address_type=result.get("addressType"),
             basement_area=result.get("basementArea"),
@@ -400,6 +402,7 @@ class Home(BaseModel):
                 key=lambda img: img["size"]["height"],
                 reverse=True,
             )[0],
+            last_updated=datetime.date.today(),
         )
 
     @field_validator("energy_label", mode="before")
@@ -501,3 +504,6 @@ class Home(BaseModel):
         components = [f"URL: {self.case_url}", f"Address: {self.address}"]
         components += self._get_components()
         return "\n".join(components)
+
+
+# %%

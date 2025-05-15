@@ -155,6 +155,7 @@ class TransportationMethod(StrEnum):
     METRO = "prod_sub"
     S_TRAIN = "prod_comm"
     REGIONAL_TRAIN = "prod_ic"
+    LOCAL_TRAIN = "prod_lokalbane"
 
 
 class LegProductIcon(BaseModel):
@@ -244,6 +245,12 @@ class Trip(BaseModel):
 
     @computed_field
     @property
+    def mode_changes(self) -> float:
+        """Get the number of mode changes in the trip."""
+        return len(self.legs) - 1
+
+    @computed_field
+    @property
     def duration_simple(self) -> float:
         """Get the simple duration of the trip."""
         return self.duration.minutes
@@ -286,7 +293,7 @@ class Trip(BaseModel):
     def description(self) -> str:
         """Get a description of the trip."""
         description = "Trip description: \n"
-        for i, leg in enumerate(self.legs):
+        for i, leg in enumerate(self.legs, start=1):
             origin_name = leg.Origin["name"]
             destination_name = leg.Destination["name"]
             s_method = leg.method.name.capitalize().replace("_", "-")

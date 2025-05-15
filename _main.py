@@ -49,13 +49,15 @@ for result in results:
     municipality = result["address"]["municipality"]["name"]
     size = result.get("housingArea")
     price = result.get("priceCash")
-    print(f"{municipality}: {size} m2, {price} kr.")
+    # print(f"{municipality}: {size} m2, {price} kr.")
 # print(result)
 
 # %%
 
 home = Home.from_nested_dict(result)
-# print(home.model_dump(exclude_none=True))
+print(home)
+
+# %%
 
 home.case_id
 home.case_url
@@ -66,16 +68,21 @@ print(home.to_text())
 
 # %%
 
-
 # polygon = "12.467721,55.768600|12.482656,55.759274|12.506124,55.758190|12.519962,55.767550|12.510944,55.778394|12.509179,55.788153|12.506264,55.797984|12.481980,55.806335|12.474718,55.817548|12.453262,55.816325|12.433050,55.812394|12.429428,55.811859|12.423876,55.811171|12.415170,55.800073|12.423254,55.788798|12.427297,55.776908|12.446732,55.771573|12.467721,55.768600"  # noqa: E501
 
 
 # %%
 
+if home.coordinates is None:
+    print("Finding coordinates by Rejseplanen API")
+    origin_location = Location.from_string(home.address)
+else:
+    origin_location = Location(
+        lat=home.coordinates.lat,
+        lon=home.coordinates.lon,
+    )
 
-origin_location = Location.from_string("Frugthegnet 42, 2830 Virum")
-
-request = TripRequest(
+trip_request = TripRequest(
     originCoordLat=origin_location.lat,
     originCoordLong=origin_location.lon,
     destId="8600646",  # (Nørreport st)
@@ -84,11 +91,12 @@ request = TripRequest(
     date="2025-05-19",  # Monday's date in YYYY-MM-DD format
     time="08:00",  # Time in hh:mm format
 )
-response = request.get_response()
+trip_response = trip_request.get_response()
 
-
-journey = Journey(**response)
+journey = Journey(**trip_response)
 trip1 = journey.get_fastest_trip_simple()
 trip2 = journey.get_fastest_trip_corrected()
+
+# print(trip1)
 print(trip1.description)
 print(trip2.description)
