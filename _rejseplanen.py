@@ -3,22 +3,48 @@
 import os
 import re
 from datetime import timedelta
+from typing import Annotated, Any, Self
 
 import requests
 from dotenv import load_dotenv
+from pydantic import AliasPath, BaseModel, BeforeValidator, Field
 from rich import print
 
+# %%
+
 load_dotenv(dotenv_path=".env")
-
-
 API_KEY = os.getenv("REJSEPLANEN_API_KEY")
 
 
 # %%
 
-# Define the base URL and endpoint
-base_url = "https://www.rejseplanen.dk/api/"
-endpoint = "trip"
+
+class Request(BaseModel):
+    accessId: str
+    originCoordLat: str | None = None
+    originCoordLong: str | None = None
+    destCoordLat: str | None = None
+    destCoordLong: str | None = None
+    date: str | None = None
+    time: str | None = None
+    format: str = "json"
+
+    base_url: str = "https://www.rejseplanen.dk/api/"
+    endpoint: str = "trip"
+
+    def get_response(self) -> dict:
+        """Get the response from the API."""
+        params = self.model_dump(exclude_none=True)
+
+        # Make the GET request
+        response = requests.get(self.base_url + self.endpoint, params=params)
+
+        # Check the response status and print the result
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise ValueError(f"Error: {response.status_code} {response.text}")
+
 
 # Define the query parameters
 params = {
@@ -29,168 +55,193 @@ params = {
     "destCoordLong": "12.5708992",  # Destination longitude
     "date": "2025-05-19",  # Monday's date in YYYY-MM-DD format
     "time": "08:00",  # Time in hh:mm format
-    "format": "json",  # Requesting JSON response
-    "originBike": True,  # Origin bike parameter
-    "originCar": True,
 }
 
-
-# Make the GET request
-response = requests.get(base_url + endpoint, params=params)
-
-# Check the response status and print the result
-if response.status_code == 200:
-    # print("Response JSON:", response.json())
-    data = response.json()
-else:
-    print("Error:", response.status_code, response.text)
-
-
-# %%
-
-# print(data)
-data.keys()
-# [
-#     "Trip",
-#     "ResultStatus",
-#     "TechnicalMessages",
-#     "serverVersion",
-#     "dialectVersion",
-#     "planRtTs",
-#     "requestId",
-#     "scrB",
-#     "scrF",
-# ]
-
-len(data["Trip"])  # 5
-data["Trip"][0].keys()
-# [
-#     "Origin",
-#     "Destination",
-#     "ServiceDays",
-#     "LegList",
-#     "TariffResult",
-#     "calculation",
-#     "TripStatus",
-#     "idx",
-#     "tripId",
-#     "ctxRecon",
-#     "duration",
-#     "checksum",
-# ]
-
-data["Trip"][0]["Origin"]
-# data["Trip"][0]["Origin"]["time"]
-# data["Trip"][0]["Origin"]["date"]
-
-data["Trip"][0]["Destination"]
-
-# data["Trip"][0]["ServiceDays"]
-
-len(data["Trip"][0]["LegList"]["Leg"])  # 3
-data["Trip"][0]["LegList"]["Leg"][0]  # one for each leg
-data["Trip"][0]["LegList"]["Leg"][1]
-data["Trip"][0]["LegList"]["Leg"][2]
-
-# data["Trip"][0]["TariffResult"]
-# data["Trip"][0]["calculation"]
-# data["Trip"][0]["TripStatus"]
-# data["Trip"][0]["idx"]
-# data["Trip"][0]["tripId"]
-# data["Trip"][0]["ctxRecon"]
-
-data["Trip"][0]["duration"]  # PT43M
-data["Trip"][1]["duration"]  # PT39M
-data["Trip"][2]["duration"]  # PT43M
-data["Trip"][3]["duration"]  # PT43M
-data["Trip"][4]["duration"]  # PT39M
-
-# PT23H59M0S
-
-# %%
-
-data["Trip"][4]["LegList"]["Leg"][0]
-data["Trip"][4]["LegList"]["Leg"][1]
-data["Trip"][4]["LegList"]["Leg"][2]
-data["Trip"][4]["LegList"]["Leg"][3]
-data["Trip"][4]["LegList"]["Leg"][4]
+request = Request(**params)
+response = request.get_response()
 
 
 # %%
 
 
-trip_i = 2
-data["Trip"][trip_i]["LegList"]["Leg"][0]
-data["Trip"][trip_i]["LegList"]["Leg"][0]["type"]
-data["Trip"][trip_i]["LegList"]["Leg"][0]["duration"]
-data["Trip"][trip_i]["LegList"]["Leg"][0]["dist"]
+class Duration(BaseModel):
+    """Duration string in the format PT23H59M0S.
 
-# (507 / 1000) / (7 / 60)  # km / h
-# (1665 / 1000) / (21 / 60)  # km / h
+    example_duration_1 = "PT43M"
+    example_duration_2 = "PT23H59M0S"
+    """
+
+    dt: timedelta
+
+    @property
+    def minutes(self) -> float:
+        """Get the duration in minutes."""
+        return self.dt.total_seconds() / 60
+
+    @classmethod
+    def from_string(cls, duration_str: str) -> Self:
+        """Parse a duration string in the format PT23H59M0S."""
+        match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+        if not match:
+            raise ValueError(f"Invalid duration format: {duration_str}")
+        hours = int(match.group(1)) if match.group(1) else 0
+        minutes = int(match.group(2)) if match.group(2) else 0
+        seconds = int(match.group(3)) if match.group(3) else 0
+        dt = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+        return cls(dt=dt)
 
 
-def get_duration_simple(data: dict) -> float:
-    duration_str = data["Trip"][0]["duration"]
-    return parse_duration_to_minutes(duration_str)
-
-
-def get_duration_by_legs(data: dict) -> float:
-    total = 0
-    for leg in data["Trip"][0]["LegList"]["Leg"]:
-        leg_duration_str = leg["duration"]
-        leg_duration = parse_duration_to_minutes(leg_duration_str)
-        total += leg_duration
-    return total
-
-
-def get_duration_corrected(
-    data: dict,
-    initial_speed: float = 15,  # km/h
-) -> float:
-    total = 0
-    for i, leg in enumerate(data["Trip"][0]["LegList"]["Leg"]):
-        if i == 0 and leg["type"] == "WALK":
-            dist = leg["dist"]
-            corrected_duration = dist / 1000 / (initial_speed / 60)
-            total += corrected_duration
-        else:
-            leg_duration_str = leg["duration"]
-            leg_duration = parse_duration_to_minutes(leg_duration_str)
-            total += leg_duration
-    return total
+DurationFromStr = Annotated[Duration, BeforeValidator(Duration.from_string)]
 
 
 # %%
 
-get_duration_simple(data)
-get_duration_by_legs(data)
-get_duration_corrected(data, initial_speed=15)  # 23.5 km/h
-get_duration_corrected(data, initial_speed=5)  # 23.5 km/h
+# https://www.rejseplanen.dk/api/xsd/rest.xsd
+
+
+class BaseLeg(BaseModel):
+    Origin: dict
+    Destination: dict
+    id: str
+    idx: int
+    name: str
+    type: str
+    duration: DurationFromStr
+
+
+class WalkLeg(BaseLeg):
+    GisRef: dict
+    GisRoute: dict
+    dist: int
+
+
+class TrainLeg(BaseLeg):
+    Notes: dict | None
+    JourneyDetailRef: dict | None
+    JourneyStatus: str | None
+    Product: list[dict] | None
+    JourneyDetail: dict | None
+    number: str | None
+    category: str | None
+    reachable: bool | None
+    direction: str | None
+    directionFlag: str | None
+    minimumChangeDuration: str | None
+
+
+def _ensure_proper_leg(value: Any) -> BaseLeg:  # noqa: ANN401
+    try:
+        leg = BaseLeg(**value)
+    except Exception as e:
+        raise ValueError(f"Failed to parse leg: {e}")
+
+    if leg.type == "WALK":
+        return WalkLeg(**value)
+    elif leg.type == "JNY":
+        return TrainLeg(**value)
+    else:
+        print(f"Unknown leg type: {leg.type}")
+        return BaseLeg(**value)
+
+
+Leg = Annotated[BaseLeg, BeforeValidator(_ensure_proper_leg)]
 
 
 # %%
 
 
-def parse_duration_to_dt(duration_str: str) -> timedelta:
-    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
-    if not match:
-        raise ValueError(f"Invalid duration format: {duration_str}")
+class Trip(BaseModel):
+    Origin: dict
+    Destination: dict
+    legs: list[Leg] = Field(validation_alias=AliasPath("LegList", "Leg"))
+    duration: DurationFromStr
 
-    hours = int(match.group(1)) if match.group(1) else 0
-    minutes = int(match.group(2)) if match.group(2) else 0
-    seconds = int(match.group(3)) if match.group(3) else 0
+    # ServiceDays: list
+    # LegList: list[dict] = Field(alias="LegList.Leg")
+    # TariffResult: dict
+    # calculation: dict
+    # TripStatus: str
+    # idx: int
+    # tripId: str
+    # ctxRecon: str
+    # checksum: str
 
-    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    @property
+    def duration_simple(self) -> float:
+        duration_simple = self.duration.minutes
+        duration_by_legs = self._get_duration_by_legs()
+        if not duration_simple == duration_by_legs:
+            raise ValueError(
+                f"Duration mismatch: {duration_simple} != {duration_by_legs}. "
+            )
+        return duration_simple
+
+    def _get_duration_by_legs(self) -> float:
+        """Only used for validation purposes."""
+        total = 0
+        for leg in self.legs:
+            total += leg.duration.minutes
+        return total
+
+    def _get_duration_corrected(
+        self,
+        initial_speed: float = 15,  # km/h
+        extra_time: float = 1,  # minutes
+    ) -> float:
+        """Calculate the corrected duration of the trip.
+
+        The corrected duration is calculated by biking the first leg (if it's a WalkLeg)
+        and adding the duration of the other legs.
+        The biking speed is set to initial_speed (in km/h) and the extra_time is
+        added to take bike parking into account.
+        """
+        total = 0
+        for i, leg in enumerate(self.legs):
+            if i == 0 and isinstance(leg, WalkLeg):
+                corrected_duration = leg.dist / 1000 / (initial_speed / 60)
+                total += corrected_duration + extra_time
+            else:
+                total += leg.duration.minutes
+        return total
+
+    @property
+    def duration_corrected(self) -> float:
+        return self._get_duration_corrected(initial_speed=15, extra_time=1)
 
 
-def parse_duration_to_minutes(duration_str: str) -> float:
-    dt = parse_duration_to_dt(duration_str)
-    return dt.total_seconds() / 60
+# %%
 
 
-# Example usage
-example_duration_1 = "PT43M"
-example_duration_2 = "PT23H59M0S"
+class Journey(BaseModel):
+    """Journey response from Rejseplanen API.
 
-print(parse_duration_to_minutes(example_duration_1))  # Output: (0, 43, 0)
-print(parse_duration_to_minutes(example_duration_2))  # Output: (23, 59, 0)
+    Each journey contains multiple trips. Each trip contains multiple legs.
+    The legs can be of different types, such as WalkLeg or TrainLeg.
+    The duration of the trip is calculated based on the legs.
+    The duration is in minutes and can be corrected based on the biking speed.
+    """
+
+    trips: list[Trip] = Field(alias="Trip")
+
+    @property
+    def best_duration_simple(self) -> float:
+        """Get the best duration of the trip."""
+        best_duration = min([trip.duration_simple for trip in self.trips])
+        return best_duration
+
+    @property
+    def best_duration_corrected(self) -> float:
+        """Get the best corrected duration of the trip."""
+        best_duration = min([trip.duration_corrected for trip in self.trips])
+        return best_duration
+
+
+journey = Journey(**response)
+trip = journey.trips[0]
+print(trip)
+
+
+# %%
+
+journey.best_duration_simple
+journey.best_duration_corrected
