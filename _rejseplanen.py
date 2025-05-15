@@ -15,37 +15,34 @@ from rich import print
 
 load_dotenv(dotenv_path=".env")
 API_KEY = os.getenv("REJSEPLANEN_API_KEY")
+if API_KEY is None:
+    raise ValueError("REJSEPLANEN_API_KEY not found in .env file. Please set it.")
 
 
 # %%
 
 
-class Request(BaseModel):
-    """Request to the Rejseplanen API.
+class BaseRequest(BaseModel):
+    """Base class for requests to the Rejseplanen API.
 
-    For more info on inputs:    https://www.rejseplanen.dk/api/trip?wadl
     For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
     """
 
-    accessId: str
-    originCoordLat: str | None = None
-    originCoordLong: str | None = None
-    destId: str | None = None
-    destCoordLat: str | None = None
-    destCoordLong: str | None = None
-    date: str | None = None
-    time: str | None = None
+    accessId: str = API_KEY
+    endpoint: str
     format: str = "json"
 
     base_url: str = "https://www.rejseplanen.dk/api/"
-    endpoint: str = "trip"
+
+    @property
+    def params(self) -> dict:
+        params = self.model_dump(exclude_none=True)
+        return params
 
     def get_response(self) -> dict:
         """Get the response from the API."""
-        params = self.model_dump(exclude_none=True)
-
         # Make the GET request
-        response = requests.get(self.base_url + self.endpoint, params=params)
+        response = requests.get(self.base_url + self.endpoint, params=self.params)
 
         # Check the response status and print the result
         if response.status_code == 200:
@@ -54,22 +51,73 @@ class Request(BaseModel):
             raise ValueError(f"Error: {response.status_code} {response.text}")
 
 
-# Define the query parameters
-params = {
-    "accessId": API_KEY,  # Your API key
-    "originCoordLat": "55.7855248",  # Origin latitude
-    "originCoordLong": "12.464205",  # Origin latitude
-    "destId": "8600646",  # (Nørreport st)
-    # "destCoordLat": "55.683597",  # Destination latitude
-    # "destCoordLong": "12.5708992",  # Destination longitude
-    "date": "2025-05-19",  # Monday's date in YYYY-MM-DD format
-    "time": "08:00",  # Time in hh:mm format
-}
+# %%
 
 
-request = Request(**params)
+class LocationRequest(BaseRequest):
+    """Request to the Rejseplanen API.
+
+    For more info on inputs:    https://www.rejseplanen.dk/api/location.name?wadl
+    For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
+    """
+
+    input: str
+    endpoint: str = "location.name"
+    maxNo: int = 1
+
+
+class Location(BaseModel):
+    """Location name response from Rejseplanen API."""
+
+    extId: str | None = None
+    name: str | None = None
+    lon: float
+    lat: float
+
+    @classmethod
+    def from_string(cls, location_string: str) -> Self:
+        """Get the location from the Rejsekort API."""
+        request = LocationRequest(input=location_string)
+        response = request.get_response()
+        location_data = response["stopLocationOrCoordLocation"][0]["CoordLocation"]
+        return cls(**location_data)
+
+
+# %%
+
+
+class TripRequest(BaseRequest):
+    """Request to the Rejseplanen API.
+
+    For more info on inputs:    https://www.rejseplanen.dk/api/trip?wadl
+    For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
+    """
+
+    originId: str | None = None
+    originCoordLat: float | None = None
+    originCoordLong: float | None = None
+    destId: str | None = None
+    destCoordLat: float | None = None
+    destCoordLong: float | None = None
+    date: str | None = None
+    time: str | None = None
+    endpoint: str = "trip"
+
+
+# %%
+
+origin_location = Location.from_string("Frugthegnet 42, 2830 Virum")
+
+request = TripRequest(
+    originCoordLat=origin_location.lat,
+    originCoordLong=origin_location.lon,
+    destId="8600646",  # (Nørreport st)
+    # destCoordLat="55.683597",  # Destination latitude
+    # destCoordLong="12.5708992",  # Destination longitude
+    date="2025-05-19",  # Monday's date in YYYY-MM-DD format
+    time="08:00",  # Time in hh:mm format
+)
 response = request.get_response()
-
 
 # %%
 
@@ -190,16 +238,6 @@ class Trip(BaseModel):
     legs: list[Leg] = Field(validation_alias=AliasPath("LegList", "Leg"))
     duration: DurationFromStr
 
-    # ServiceDays: list
-    # LegList: list[dict] = Field(alias="LegList.Leg")
-    # TariffResult: dict
-    # calculation: dict
-    # TripStatus: str
-    # idx: int
-    # tripId: str
-    # ctxRecon: str
-    # checksum: str
-
     @computed_field
     @property
     def duration_simple(self) -> float:
@@ -238,13 +276,25 @@ class Trip(BaseModel):
         """Get the methods of transport for the trip."""
         return [leg.method for leg in self.legs]
 
-    # @property
-    # def only_bus(self) -> bool:
-    #     """Check if the trip only contains only bus (and walking)."""
-    #     return all(
-    #         method in (TransportationMethod.WALK, TransportationMethod.BUS)
-    #         for method in self.methods
-    #     )
+    @property
+    def description(self) -> str:
+        """Get a description of the trip."""
+        description = "Trip description: \n"
+        for i, leg in enumerate(self.legs):
+            origin_name = leg.Origin["name"]
+            destination_name = leg.Destination["name"]
+            s_method = leg.method.name.capitalize().replace("_", "-")
+            duration = leg.duration.minutes
+            description += (
+                f"\t{i}) {s_method}"
+                f" from {origin_name} to {destination_name}"
+                f" ({duration:.0f} min)\n"
+            )
+        description += (
+            f"Total duration: {self.duration_simple:.0f} min"
+            f" ({self.duration_corrected:.0f} if biking instead of walking first) "
+        )
+        return description
 
 
 # %%
@@ -287,6 +337,9 @@ class Journey(BaseModel):
 
 
 journey = Journey(**response)
-trip = journey.get_fastest_trip_simple()
-trip = journey.get_fastest_trip_corrected()
-print(trip)
+trip1 = journey.get_fastest_trip_simple()
+trip2 = journey.get_fastest_trip_corrected()
+print(trip1.description)
+print(trip2.description)
+
+# %%
