@@ -363,6 +363,7 @@ class Home(BaseModel):
     lot_area: int = Field(ge=0)
     weighted_area: float | None = Field(ge=0)
     image: SearchImage | None
+    price_change_percentage: float | None = None
     last_updated: datetime.date
 
     @classmethod
@@ -402,6 +403,7 @@ class Home(BaseModel):
                 key=lambda img: img["size"]["height"],
                 reverse=True,
             )[0],
+            price_change_percentage=result.get("priceChangePercentage"),
             last_updated=datetime.date.today(),
         )
 
