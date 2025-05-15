@@ -20,9 +20,16 @@ API_KEY = os.getenv("REJSEPLANEN_API_KEY")
 
 
 class Request(BaseModel):
+    """Request to the Rejseplanen API.
+
+    For more info on inputs:    https://www.rejseplanen.dk/api/trip?wadl
+    For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
+    """
+
     accessId: str
     originCoordLat: str | None = None
     originCoordLong: str | None = None
+    destId: str | None = None
     destCoordLat: str | None = None
     destCoordLong: str | None = None
     date: str | None = None
@@ -51,8 +58,9 @@ params = {
     "accessId": API_KEY,  # Your API key
     "originCoordLat": "55.7855248",  # Origin latitude
     "originCoordLong": "12.464205",  # Origin latitude
-    "destCoordLat": "55.683597",  # Destination latitude
-    "destCoordLong": "12.5708992",  # Destination longitude
+    "destId": "8600646",  # (Nørreport st)
+    # "destCoordLat": "55.683597",  # Destination latitude
+    # "destCoordLong": "12.5708992",  # Destination longitude
     "date": "2025-05-19",  # Monday's date in YYYY-MM-DD format
     "time": "08:00",  # Time in hh:mm format
 }
@@ -72,6 +80,7 @@ class Duration(BaseModel):
     """
 
     dt: timedelta
+    raw: str
 
     @property
     def minutes(self) -> float:
@@ -88,15 +97,13 @@ class Duration(BaseModel):
         minutes = int(match.group(2)) if match.group(2) else 0
         seconds = int(match.group(3)) if match.group(3) else 0
         dt = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-        return cls(dt=dt)
+        return cls(dt=dt, raw=duration_str)
 
 
 DurationFromStr = Annotated[Duration, BeforeValidator(Duration.from_string)]
 
 
 # %%
-
-# https://www.rejseplanen.dk/api/xsd/rest.xsd
 
 
 class BaseLeg(BaseModel):
@@ -115,7 +122,7 @@ class WalkLeg(BaseLeg):
     dist: int
 
 
-class TrainLeg(BaseLeg):
+class TrainOrBusLeg(BaseLeg):
     Notes: dict | None
     JourneyDetailRef: dict | None
     JourneyStatus: str | None
@@ -126,7 +133,7 @@ class TrainLeg(BaseLeg):
     reachable: bool | None
     direction: str | None
     directionFlag: str | None
-    minimumChangeDuration: str | None
+    minimumChangeDuration: str | None = None
 
 
 def _ensure_proper_leg(value: Any) -> BaseLeg:  # noqa: ANN401
@@ -138,7 +145,7 @@ def _ensure_proper_leg(value: Any) -> BaseLeg:  # noqa: ANN401
     if leg.type == "WALK":
         return WalkLeg(**value)
     elif leg.type == "JNY":
-        return TrainLeg(**value)
+        return TrainOrBusLeg(**value)
     else:
         print(f"Unknown leg type: {leg.type}")
         return BaseLeg(**value)
@@ -168,20 +175,7 @@ class Trip(BaseModel):
 
     @property
     def duration_simple(self) -> float:
-        duration_simple = self.duration.minutes
-        duration_by_legs = self._get_duration_by_legs()
-        if not duration_simple == duration_by_legs:
-            raise ValueError(
-                f"Duration mismatch: {duration_simple} != {duration_by_legs}. "
-            )
-        return duration_simple
-
-    def _get_duration_by_legs(self) -> float:
-        """Only used for validation purposes."""
-        total = 0
-        for leg in self.legs:
-            total += leg.duration.minutes
-        return total
+        return self.duration.minutes
 
     def _get_duration_corrected(
         self,
@@ -190,19 +184,20 @@ class Trip(BaseModel):
     ) -> float:
         """Calculate the corrected duration of the trip.
 
-        The corrected duration is calculated by biking the first leg (if it's a WalkLeg)
-        and adding the duration of the other legs.
-        The biking speed is set to initial_speed (in km/h) and the extra_time is
-        added to take bike parking into account.
+        The corrected duration is calculated by taking the first leg of the trip
+        and checking if it is a WalkLeg. If it is, the duration is corrected
+        by subtracting the time it would take to bike instead of walk and adding
+        the extra time for bike parking. The corrected duration is then returned.
         """
-        total = 0
-        for i, leg in enumerate(self.legs):
-            if i == 0 and isinstance(leg, WalkLeg):
-                corrected_duration = leg.dist / 1000 / (initial_speed / 60)
-                total += corrected_duration + extra_time
-            else:
-                total += leg.duration.minutes
-        return total
+        first_leg = self.legs[0]
+        if not isinstance(first_leg, WalkLeg):
+            return self.duration_simple
+
+        bike_duration = first_leg.dist / 1000 / (initial_speed / 60)
+        walk_duration = first_leg.duration.minutes
+        speedup = walk_duration - bike_duration
+        corrected_duration = self.duration_simple - speedup + extra_time
+        return corrected_duration
 
     @property
     def duration_corrected(self) -> float:
@@ -216,7 +211,7 @@ class Journey(BaseModel):
     """Journey response from Rejseplanen API.
 
     Each journey contains multiple trips. Each trip contains multiple legs.
-    The legs can be of different types, such as WalkLeg or TrainLeg.
+    The legs can be of different types, such as WalkLeg or TrainOrBusLeg.
     The duration of the trip is calculated based on the legs.
     The duration is in minutes and can be corrected based on the biking speed.
     """
@@ -239,9 +234,3 @@ class Journey(BaseModel):
 journey = Journey(**response)
 trip = journey.trips[0]
 print(trip)
-
-
-# %%
-
-journey.best_duration_simple
-journey.best_duration_corrected
