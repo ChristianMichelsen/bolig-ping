@@ -123,3 +123,4 @@ data/**
 data/** */
 *.fgb
 _gis_elevation.py
+_main.py
