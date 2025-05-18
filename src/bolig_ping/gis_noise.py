@@ -14,7 +14,6 @@ from tqdm.auto import tqdm
 
 # %%
 
-GIS_DIR = Path("data") / "gis"
 ZIP_URL = "https://files-miljoegis.mim.dk/noise2022/2022_noise_shp.zip"
 
 
@@ -46,6 +45,7 @@ def download_with_progress(url: Path | str, dest_path: Path | str) -> None:
 
 def _load_noise_shapefiles(shapefile_paths: list[Path]) -> gpd.GeoDataFrame:
     gdfs = []
+    print("Loading individual shapefiles and merging together...")
     for shapefile_path in tqdm(shapefile_paths):
         gdf = gpd.read_file(shapefile_path)
 
@@ -61,10 +61,10 @@ def _load_noise_shapefiles(shapefile_paths: list[Path]) -> gpd.GeoDataFrame:
             )
             gdfs.append(gdf)
         except KeyError:
-            print(f"KeyError: {shapefile_path}")
-            print(gdf.columns)
-            print()
             continue
+            # print(f"KeyError: {shapefile_path}")
+            # print(gdf.columns)
+            # print()
 
     # Concatenate all GeoDataFrames into one and convert source to categorical
     gdf_all = gpd.GeoDataFrame(
@@ -76,24 +76,23 @@ def _load_noise_shapefiles(shapefile_paths: list[Path]) -> gpd.GeoDataFrame:
 
 
 def get_gis_noise_all_data(
-    gis_dir: str | Path = GIS_DIR,
+    output_file_all: Path,
     zip_url: str | Path = ZIP_URL,
 ) -> gpd.GeoDataFrame:
     """Load all GIS noise data from the specified directory.
 
     https://mst.dk/erhverv/tilskud-miljoeviden-og-data/data-og-databaser/miljoegis-data-om-natur-og-miljoe-paa-webkort/hent-data-udstillet-paa-miljoegis
     """
-    output_file_all = Path(gis_dir) / "noise_all.fgb"
-
     if output_file_all.exists():
         print(f"Loading {output_file_all} from cache")
         gdf_all = gpd.read_file(output_file_all)
         return gdf_all
 
+    print("Downloading GIS noise data, please wait...")
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=True) as tmp_file:
         download_with_progress(zip_url, tmp_file.name)
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
-            print("Files in zip:", zip_ref.namelist())
+            # print("Files in zip:", zip_ref.namelist())
             extract_dir = tempfile.TemporaryDirectory()
             print("Extracting zip file")
             zip_ref.extractall(extract_dir.name)
@@ -138,7 +137,7 @@ def filter_gis_noise_data_all(gdf_all: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def get_gis_noise_data(
-    gis_dir: str | Path = GIS_DIR,
+    gis_dir: str | Path,
 ) -> gpd.GeoDataFrame:
     """Load GIS noise data from the specified directory.
 
@@ -150,11 +149,11 @@ def get_gis_noise_data(
     output_file_all = gis_dir / "noise_all.fgb"
 
     if output_file.exists():
-        print(f"Loading {output_file} from cache")
-        gdf = gpd.read_file(output_file_all)
+        # print(f"Loading {output_file} from cache")
+        gdf = gpd.read_file(output_file)
         return gdf
 
-    gdf_all = get_gis_noise_all_data(gis_dir)
+    gdf_all = get_gis_noise_all_data(output_file_all)
     print("Filtering GIS noise data, please wait...")
     gdf = filter_gis_noise_data_all(gdf_all)
 
@@ -166,7 +165,7 @@ def get_gis_noise_data(
 # %%
 
 
-class Noise(BaseModel):
+class Noise(BaseModel, arbitrary_types_allowed=True):
     """Noise data."""
 
     rows: gpd.GeoDataFrame | None
@@ -183,13 +182,13 @@ class GisNoise(BaseModel, arbitrary_types_allowed=True):
     @classmethod
     def from_dir(
         cls,
-        path: str | Path,
+        gis_dir: str | Path,
     ) -> Self:
         """Load GIS noise data from the specified directory.
 
         https://mst.dk/erhverv/tilskud-miljoeviden-og-data/data-og-databaser/miljoegis-data-om-natur-og-miljoe-paa-webkort/hent-data-udstillet-paa-miljoegis
         """
-        gdf = get_gis_noise_data(path)
+        gdf = get_gis_noise_data(gis_dir)
         return cls(gdf=gdf)
 
     def get_noise(self, lon: float, lat: float) -> Noise:
