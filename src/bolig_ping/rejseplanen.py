@@ -33,16 +33,13 @@ class BaseRequest(BaseModel):
                     https://labs.rejseplanen.dk/hc/da/article_attachments/22429062830237
 
 
-
     Authentication:
-        Every client using the API needs to pass a valid authentication key in every request.
-        The authentication key can be passed either as parameter in the URL:
-        accessId=<your_key_here>
+        Every client using the API needs to pass a valid authentication key
+        in every request. The authentication key can be passed either as
+        parameter in the URL:
+            accessId=<your_key_here>
         or by using the Authorization Header like this:
-        Authorization: Bearer <your_key_here>
-
-
-
+            Authorization: Bearer <your_key_here>
     """
 
     accessId: str = API_KEY
@@ -236,6 +233,7 @@ class TransportationMethod(StrEnum):
     """Enum for transportation methods."""
 
     WALK = "prod_walk"
+    BIKE = "prod_bike"
     BUS = "prod_bus"
     METRO = "prod_sub"
     S_TRAIN = "prod_comm"
@@ -285,6 +283,14 @@ class WalkLeg(BaseLeg):
     dist: int
 
 
+class BikeLeg(BaseLeg):
+    """A leg of a trip that is by bike."""
+
+    GisRef: dict
+    GisRoute: dict
+    dist: int
+
+
 class JNYLeg(BaseLeg):
     """A leg of a trip that is a public transport journey.
 
@@ -309,8 +315,11 @@ def _ensure_proper_leg(raw_leg: Any) -> BaseLeg:  # noqa: ANN401
     except Exception as e:
         raise ValueError(f"Failed to parse leg: {e}")
 
-    if leg.method == "prod_walk":
+    if leg.method == TransportationMethod.WALK:
         return WalkLeg(**raw_leg)
+
+    elif leg.method == TransportationMethod.BIKE:
+        return BikeLeg(**raw_leg)
 
     return JNYLeg(**raw_leg)
 
@@ -326,7 +335,7 @@ class Trip(BaseModel):
     Origin: dict
     Destination: dict
     legs: list[Leg] = Field(validation_alias=AliasPath("LegList", "Leg"))
-    duration: DurationFromStr
+    duration_str: DurationFromStr = Field(validation_alias="duration")
 
     @computed_field
     @property
@@ -336,38 +345,9 @@ class Trip(BaseModel):
 
     @computed_field
     @property
-    def duration_simple(self) -> float:
-        """Get the simple duration of the trip."""
-        return self.duration.minutes
-
-    def _get_duration_corrected(
-        self,
-        initial_speed: float = 15,  # km/h
-        extra_time: float = 1,  # minutes
-    ) -> float:
-        """Calculate the corrected duration of the trip.
-
-        The corrected duration is calculated by taking the first leg of the trip
-        and checking if it is a WalkLeg. If it is, the duration is corrected
-        by subtracting the time it would take to bike instead of walk and adding
-        the extra time for bike parking. The corrected duration is then returned.
-        """
-        first_leg = self.legs[0]
-        if not isinstance(first_leg, WalkLeg):
-            return self.duration_simple
-
-        # Bike instead of walk
-        bike_duration = first_leg.dist / 1000 / (initial_speed / 60)
-        walk_duration = first_leg.duration.minutes
-        speedup = walk_duration - bike_duration
-        corrected_duration = self.duration_simple - speedup + extra_time
-        return corrected_duration
-
-    @computed_field
-    @property
-    def duration_corrected(self) -> float:
-        """Get the corrected duration of the trip."""
-        return self._get_duration_corrected(initial_speed=15, extra_time=1)
+    def duration(self) -> float:
+        """Get the duration of the trip in minutes."""
+        return self.duration_str.minutes
 
     @property
     def methods(self) -> list[TransportationMethod]:
@@ -388,10 +368,7 @@ class Trip(BaseModel):
                 f" from {origin_name} to {destination_name}"
                 f" ({duration:.0f} min)\n"
             )
-        description += (
-            f"Total duration: {self.duration_simple:.0f} min"
-            f" ({self.duration_corrected:.0f} if biking instead of walking first) "
-        )
+        description += f"Total duration: {self.duration:.0f} min"
         return description
 
 
@@ -411,24 +388,12 @@ class Journey(BaseModel):
 
     @computed_field
     @property
-    def best_duration_simple(self) -> float:
-        """Get the best duration of the trip."""
-        best_duration = min([trip.duration_simple for trip in self.trips])
-        return best_duration
+    def shortest_duration(self) -> float:
+        """Get the shortest duration of the trip."""
+        shortest_duration = min([trip.duration for trip in self.trips])
+        return shortest_duration
 
-    @computed_field
-    @property
-    def best_duration_corrected(self) -> float:
-        """Get the best corrected duration of the trip."""
-        best_duration = min([trip.duration_corrected for trip in self.trips])
-        return best_duration
-
-    def get_fastest_trip_simple(self) -> Trip:
+    def get_fastest_trip(self) -> Trip:
         """Get the fastest trip based on the simple duration."""
-        fastest_trip = min(self.trips, key=lambda trip: trip.duration_simple)
-        return fastest_trip
-
-    def get_fastest_trip_corrected(self) -> Trip:
-        """Get the fastest trip based on the corrected duration."""
-        fastest_trip = min(self.trips, key=lambda trip: trip.duration_corrected)
+        fastest_trip = min(self.trips, key=lambda trip: trip.duration)
         return fastest_trip
