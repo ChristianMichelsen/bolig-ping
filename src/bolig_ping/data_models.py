@@ -396,6 +396,14 @@ def get_gis_schools(
 # %%
 
 
+def dk_format(value: int | float) -> str:
+    """Format a number in Danish format."""
+    return f"{value:,.0f}".replace(",", ".")
+
+
+# %%
+
+
 class Home(BaseModel):
     """A search result from the Boligsiden API."""
 
@@ -415,7 +423,7 @@ class Home(BaseModel):
     toilets: int | None = Field(ge=0)
     floors: int | None = Field(ge=0)
     energy_label: ENERGY_LABELS | None
-    per_area_price: float | None = Field(ge=0)
+    per_area_price: float = Field(ge=0)
     coordinates: Coordinates | None
     address_type: AddressType | None
     basement_area: int | None = Field(ge=0)
@@ -456,7 +464,8 @@ class Home(BaseModel):
             toilets=result.get("numberOfToilets"),
             floors=result.get("numberOfFloors"),
             energy_label=result.get("energyLabel"),
-            per_area_price=result.get("perAreaPrice"),
+            # per_area_price=result.get("perAreaPrice"),
+            per_area_price=result["perAreaPrice"],
             coordinates=Coordinates(
                 lat=result["coordinates"]["lat"],
                 lon=result["coordinates"]["lon"],
@@ -533,34 +542,39 @@ class Home(BaseModel):
 
     def _get_components(self) -> list[str]:
         components = []
-        components.append(f"Price: {self.price:,} kr.")
+        components.append(
+            f"Pris: {dk_format(self.price)} kr."
+            f" ({dk_format(self.per_area_price)} kr./m²)"
+        )
         if self.num_rooms is not None:
             components.append(
-                f"Number of rooms: {self.num_rooms}"
-                f" ({self.bathrooms} bathrooms, {self.toilets} toilets)"
+                f"Antal værelser: {self.num_rooms}"
+                f" ({self.bathrooms} badeværelser, {self.toilets} toiletter)"
             )
         if self.size is not None:
-            components.append(f"Size: {self.size} m²")
+            components.append(f"Boligareal: {self.size} m²")
         if self.trip is not None:
-            components.append(f"Travel time: {self.trip.duration:.0f} min")
+            components.append(f"Rejsetid: {self.trip.duration:.0f} min")
         if self.energy_label is not None:
-            components.append(f"Energy label: {self.energy_label}")
+            components.append(f"Energimærke: {self.energy_label}")
         if self.year is not None:
-            components.append(f"Year built: {self.year}")
+            components.append(f"Bygget: {self.year}")
         if self.time_on_market is not None:
-            components.append(f"Time on market: {self.time_on_market} days")
+            components.append(f"Liggetid: {self.time_on_market} dage")
         if self.monthly_fee is not None:
-            components.append(f"Monthly fee: {self.monthly_fee:,} kr./md")
-        if self.noise is not None:
             components.append(
-                f"Noise level: {self.noise.dB_min} - {self.noise.dB_max} dB"
+                f"Mdl. ejerudgifter: {dk_format(self.monthly_fee)} kr./md"
             )
+        if self.noise is not None:
+            components.append(f"Støj: {self.noise.dB_min} - {self.noise.dB_max} dB")
         if self.school is not None:
             components.append(
-                f"School: {self.school.name} ({self.school_travel_time.distance_text})"
+                f"Skole: {self.school.name} ({self.school_travel_time.distance_text})"
+                if self.school_travel_time
+                else ""
             )
         if self.title is not None:
-            components.append(f"Title: {self.title}")
+            components.append(f"Titel: {self.title}")
             # components.append(
             #     "Title:\n"
             #     + textwrap.indent(textwrap.fill(self.title, width=40), "    ")
@@ -584,7 +598,7 @@ class Home(BaseModel):
         Returns:
             The home as a text string.
         """
-        components = [f"URL: {self.case_url}", f"Address: {self.address}"]
+        components = [f"URL: {self.case_url}", f"Addresse: {self.address}"]
         components += self._get_components()
         return "\n".join(components)
 
