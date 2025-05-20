@@ -560,7 +560,7 @@ class Home(BaseModel):
                 f"School: {self.school.name} ({self.school_travel_time.distance_text})"
             )
         if self.title is not None:
-            components.append(f"Title: {self.title} days")
+            components.append(f"Title: {self.title}")
             # components.append(
             #     "Title:\n"
             #     + textwrap.indent(textwrap.fill(self.title, width=40), "    ")
