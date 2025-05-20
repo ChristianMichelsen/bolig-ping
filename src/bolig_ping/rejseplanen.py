@@ -27,7 +27,22 @@ if API_KEY is None:
 class BaseRequest(BaseModel):
     """Base class for requests to the Rejseplanen API.
 
-    For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
+    For more info:  https://www.rejseplanen.dk/api/xsd/
+                    https://www.rejseplanen.dk/api/swagger-ui
+                    https://www.rejseplanen.dk/api/api-doc
+                    https://labs.rejseplanen.dk/hc/da/article_attachments/22429062830237
+
+
+
+    Authentication:
+        Every client using the API needs to pass a valid authentication key in every request.
+        The authentication key can be passed either as parameter in the URL:
+        accessId=<your_key_here>
+        or by using the Authorization Header like this:
+        Authorization: Bearer <your_key_here>
+
+
+
     """
 
     accessId: str = API_KEY
@@ -93,17 +108,87 @@ class TripRequest(BaseRequest):
     """Request to the Rejseplanen API.
 
     For more info on inputs:    https://www.rejseplanen.dk/api/trip?wadl
-    For more info on returns:   https://www.rejseplanen.dk/api/xsd/rest.xsd
+
+
+
+    originBike:
+
+        To enable bike, minimum distance
+        should be zero meters, maximum
+        distance should be 1000 meters set the
+        parameter originBike=1,0,1000.
+
+        If the default distance should be used,
+        just put no value, e.g 1,,1500 to have
+        bike enabled, default minimum and 1500
+        meters as maximum.
+
+        Other possible settings are
+        Speed
+            < 100: faster
+            = 100: normal (default)
+            > 100: slower
+
+        Be faster than normal: 1,0,1000,50
+
+        Be slower than normal: 1,0,1000,150
+
+        Bee line calculation: 0 (default) or 1
+
+
+    rtMode:
+        Set the realtime mode to be used.
+
+        OFF:
+            Search on planned data, ignore
+            real-time information completely:
+            Connections are computed on the basis
+            of planned data. No real-time
+            information is shown.
+        INFOS:
+            Search on planned data, use
+            real-time information for display only:
+            Connections are computed on the basis
+            of planned data. Delays and feasibility of
+            the connections are integrated into the
+            result. Note that additional trains
+            (supplied via realtime feed) will not be
+            part of the resulting connections.
+        FULL:
+            Combined search on planned and real-time data
+            This search consists of two steps:
+            i.
+                Search on scheduled data
+            ii.
+                If the result of step (i) contains a nonfeasible connection,
+                a search on realtime data is performed and all results are combined.
+        REALTIME:
+            Search on real-time data:
+            Connections are computed on the basis
+            of real-time data, using planned
+            schedule only whenever no real-time
+            data is available. All connections
+            computed are feasible with respect to
+            the currently known real-time situation.
+            Additional trains (supplied via real-time
+            feed) will be found if these are part of a
+            fast, comfortable, or direct connection
+            (or economic connection, if economic
+            search is activated).
+        SERVER_DEFAULT:
+            one of the above configured in the HAFAS server back end.
     """
 
     originId: str | None = None
     originCoordLat: float | None = None
     originCoordLong: float | None = None
+    originBike: str | None = None
+
     destId: str | None = None
     destCoordLat: float | None = None
     destCoordLong: float | None = None
-    date: str | None = None
-    time: str | None = None
+    date: str | None = None  # "YYYY-MM-DD"
+    time: str | None = None  # "hh:mm[:ss]". Seconds will be ignored for requests
     endpoint: str = "trip"
 
 
