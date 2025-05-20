@@ -132,6 +132,10 @@ class TripRequest(BaseRequest):
 
         Bee line calculation: 0 (default) or 1
 
+    originWalk:
+
+        Same as with originBike, but for walking.
+
 
     rtMode:
         Set the realtime mode to be used.
@@ -188,8 +192,6 @@ class TripRequest(BaseRequest):
     time: str | None = None  # "hh:mm[:ss]". Seconds will be ignored for requests
     endpoint: str = "trip"
 
-
-# %%
 
 # %%
 
