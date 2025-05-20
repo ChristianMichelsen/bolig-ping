@@ -66,13 +66,16 @@ def get_gis_school_data(
     municipalities: list[str],
 ) -> gpd.GeoDataFrame:
     """Get GIS school data for the specified municipalities."""
-    output_file = Path(gis_dir) / "schools.geojson"
+    municipalities = sorted(municipalities)
     output_file_all = Path(gis_dir) / "schools_all.geojson"
+    output_file = Path(gis_dir) / ("schools_" + "_".join(municipalities) + ".geojson")
 
     if output_file.exists():
         # print(f"Loading {output_file} from file")
         gdf = gpd.read_file(output_file)
         return gdf
+
+    municipalities = [s + " Kommune" for s in municipalities if "Kommune" not in s]
 
     gdf_all = get_gis_schools_all_data(output_file_all)
     gdf = gdf_all.query(f"cvr_navn in {municipalities}")
@@ -95,7 +98,7 @@ class School(BaseModel, arbitrary_types_allowed=True):
     municipality: str | None
 
 
-class GisSchool(BaseModel, arbitrary_types_allowed=True):
+class GisSchools(BaseModel, arbitrary_types_allowed=True):
     """GIS school data."""
 
     gdf: gpd.GeoDataFrame

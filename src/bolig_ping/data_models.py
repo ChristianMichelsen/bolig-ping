@@ -1,17 +1,27 @@
 """Data models used in the project."""
 
 import datetime
+import json
 import logging
-import textwrap
+from functools import cache
+from pathlib import Path
 from typing import Literal, Self
 
 import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
 
+from bolig_ping import gis_schools, google_maps, rejseplanen
+from bolig_ping.gis_noise import GisNoise, Noise
+from bolig_ping.gis_schools import GisSchools
+from bolig_ping.google_maps import get_bike_time
+
 # %%
 
 logger = logging.getLogger(__package__)
+
+GIS_DIR = Path("data") / "gis"
+
 
 # %%
 
@@ -45,7 +55,18 @@ AddressType = Literal[
 ]
 
 
-ENERGY_LABELS = Literal["A", "B", "C", "D", "E", "F", "G"]
+ENERGY_LABELS = Literal[
+    "A2020",
+    "A2015",
+    "A2010",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+]
 
 
 # %%
@@ -283,6 +304,24 @@ class SearchQuery(BaseModel):
 
         return url
 
+    def get_homes(self) -> list["Home"] | None:
+        """Get the results for the search query.
+
+        Returns:
+            The results for the search query.
+        """
+        if self.is_empty():
+            return None
+
+        response = requests.get(url=self.get_url())
+        response.raise_for_status()
+        result_dict = json.loads(response.text)
+        results = result_dict["cases"]
+        if results is None:
+            return None
+
+        return [Home.from_nested_dict(result) for result in results]
+
 
 # %%
 
@@ -334,6 +373,29 @@ class SearchImage(BaseModel):
     size: dict
 
 
+# %%
+
+
+@cache
+def get_gis_noise(gis_dir: Path) -> GisNoise:
+    """Get GIS noise data with caching."""
+    gis_noise = GisNoise.from_dir(gis_dir=gis_dir)
+    return gis_noise
+
+
+@cache
+def get_gis_schools(
+    gis_dir: Path,
+    municipalities: list[str],
+) -> GisSchools:
+    """Get GIS school data with caching."""
+    gis_schools = GisSchools.from_dir(gis_dir=gis_dir, municipalities=municipalities)
+    return gis_schools
+
+
+# %%
+
+
 class Home(BaseModel):
     """A search result from the Boligsiden API."""
 
@@ -365,6 +427,14 @@ class Home(BaseModel):
     image: SearchImage | None
     price_change_percentage: float | None = None
     last_updated: datetime.date
+    # GIS extended data
+
+    origin_location: rejseplanen.Location | None = None
+    journey: rejseplanen.Journey | None = None
+    trip: rejseplanen.Trip | None = None
+    noise: Noise | None = None
+    school: gis_schools.School | None = None
+    school_travel_time: google_maps.TravelTime | None = None
 
     @classmethod
     def from_nested_dict(cls, result: dict) -> Self:
@@ -471,19 +541,30 @@ class Home(BaseModel):
             )
         if self.size is not None:
             components.append(f"Size: {self.size} m²")
-        if self.monthly_fee is not None:
-            components.append(f"Monthly fee: {self.monthly_fee:,} kr./md")
+        if self.trip is not None:
+            components.append(f"Travel time: {self.trip.duration:.0f} min")
         if self.energy_label is not None:
             components.append(f"Energy label: {self.energy_label}")
         if self.year is not None:
             components.append(f"Year built: {self.year}")
         if self.time_on_market is not None:
             components.append(f"Time on market: {self.time_on_market} days")
-        if self.title is not None:
+        if self.monthly_fee is not None:
+            components.append(f"Monthly fee: {self.monthly_fee:,} kr./md")
+        if self.noise is not None:
             components.append(
-                "Title:\n"
-                + textwrap.indent(textwrap.fill(self.title, width=40), "    ")
+                f"Noise level: {self.noise.dB_min} - {self.noise.dB_max} dB"
             )
+        if self.school is not None:
+            components.append(
+                f"School: {self.school.name} ({self.school_travel_time.distance_text})"
+            )
+        if self.title is not None:
+            components.append(f"Title: {self.title} days")
+            # components.append(
+            #     "Title:\n"
+            #     + textwrap.indent(textwrap.fill(self.title, width=40), "    ")
+            # )
         return components
 
     def to_html(self) -> str:
@@ -507,5 +588,58 @@ class Home(BaseModel):
         components += self._get_components()
         return "\n".join(components)
 
+    def extend_with_gis(
+        self,
+        municipalities: list[str],
+        gis_dir: Path,
+        destId: str = "8600646",  # (Nørreport st)
+        originBike: str = "1,0,20000",
+        date: str = "2025-06-16",
+        time: str = "08:00",
+    ) -> None:
+        """Extend the home with GIS data."""
+        if self.coordinates is None:
+            origin_location = rejseplanen.Location.from_string(self.address)
+        else:
+            origin_location = rejseplanen.Location(
+                lat=self.coordinates.lat,
+                lon=self.coordinates.lon,
+            )
 
-# %%
+        trip_request = rejseplanen.TripRequest(
+            originCoordLat=origin_location.lat,
+            originCoordLong=origin_location.lon,
+            destId=destId,  # (Nørreport st)
+            originBike=originBike,
+            # destCoordLat="55.683597",  # Destination latitude
+            # destCoordLong="12.5708992",  # Destination longitude
+            date=date,  # Monday's date in YYYY-MM-DD format
+            time=time,  # Time in hh:mm format
+        )
+        trip_response = trip_request.get_response()
+
+        journey = rejseplanen.Journey(**trip_response)
+        trip = journey.get_fastest_trip()
+
+        gis_noise = get_gis_noise(gis_dir)
+        noise = gis_noise.get_noise(lat=origin_location.lat, lon=origin_location.lon)
+
+        gis_schools = get_gis_schools(
+            gis_dir=gis_dir,
+            municipalities=tuple(municipalities),
+        )
+        school = gis_schools.get_school(
+            lat=origin_location.lat, lon=origin_location.lon
+        )
+
+        travel_time = get_bike_time(
+            origin=f"{origin_location.lat}, {origin_location.lon}",
+            destination=f"{school.name}, {school.municipality}",
+        )
+
+        self.origin_location = origin_location
+        self.journey = journey
+        self.trip = trip
+        self.noise = noise
+        self.school = school
+        self.school_travel_time = travel_time
