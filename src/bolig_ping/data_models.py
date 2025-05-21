@@ -76,13 +76,11 @@ class SearchQuery(BaseModel):
     """A search query for the Boligsiden API."""
 
     # Boligtype
-    address_type: list[AddressType] | None = Field(
-        default=None,
+    address_type: list[AddressType] = Field(
         serialization_alias="addressTypes",
     )
     # Kommune
-    municipality: list[str] | None = Field(
-        default=None,
+    municipality: list[str] = Field(
         serialization_alias="municipalities",
     )
     # Pris
@@ -320,7 +318,21 @@ class SearchQuery(BaseModel):
         if results is None:
             return None
 
-        return [Home.from_nested_dict(result) for result in results]
+        homes: list[Home] = []
+        for result in results:
+            try:
+                home = Home.from_nested_dict(result)
+                if home.address_type in self.address_type:
+                    homes.append(home)
+                else:
+                    logger.warning(
+                        f"Address type {home.address_type} not in {self.address_type}"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not parse result {result['caseUrl']}: {e}")
+                continue
+
+        return homes
 
 
 # %%
@@ -404,8 +416,11 @@ def dk_format(value: int | float) -> str:
 # %%
 
 
-class Home(BaseModel):
-    """A search result from the Boligsiden API."""
+class BaseHome(BaseModel):
+    """Base class for a home.
+
+    Both Home and FlatHome inherit from this class.
+    """
 
     road_name: str
     road_number: str | None
@@ -424,25 +439,51 @@ class Home(BaseModel):
     floors: int | None = Field(ge=0)
     energy_label: ENERGY_LABELS | None
     per_area_price: float = Field(ge=0)
-    coordinates: Coordinates | None
     address_type: AddressType | None
     basement_area: int | None = Field(ge=0)
     case_id: str
     case_url: str
     title: str
-    lot_area: int = Field(ge=0)
+    lot_area: int | None = Field(default=None, ge=0)
     weighted_area: float | None = Field(ge=0)
-    image: SearchImage | None
     price_change_percentage: float | None = None
     last_updated: datetime.date
-    # GIS extended data
 
+
+class FlatHome(BaseHome):
+    """A 'flat' home with all the data in a single object.
+
+    This object is used for exporting the data to a CSV file.
+    """
+
+    address: str
+    coord_lat: float | None = None
+    coord_lon: float | None = None
+    trip_duration: float | None = None
+    trip_changes: int | None = None
+    trip_methods: str | None = None
+    trip_description: str | None = None
+    noise_dB_min: float | None = None
+    noise_dB_max: float | None = None
+    school_name: str | None = None
+    school_bike_distance: float | None = None
+    school_bike_duration: float | None = None
+    raw_json: str = Field(repr=False)
+
+
+class Home(BaseHome):
+    """A search result from the Boligsiden API."""
+
+    coordinates: Coordinates | None
+    image: SearchImage | None = Field(exclude=True)
+    # GIS extended data
     origin_location: rejseplanen.Location | None = None
     journey: rejseplanen.Journey | None = None
     trip: rejseplanen.Trip | None = None
     noise: Noise | None = None
     school: gis_schools.School | None = None
     school_travel_time: google_maps.TravelTime | None = None
+    raw_json: str = Field(repr=False)
 
     @classmethod
     def from_nested_dict(cls, result: dict) -> Self:
@@ -464,7 +505,6 @@ class Home(BaseModel):
             toilets=result.get("numberOfToilets"),
             floors=result.get("numberOfFloors"),
             energy_label=result.get("energyLabel"),
-            # per_area_price=result.get("perAreaPrice"),
             per_area_price=result["perAreaPrice"],
             coordinates=Coordinates(
                 lat=result["coordinates"]["lat"],
@@ -475,7 +515,7 @@ class Home(BaseModel):
             case_id=result["caseID"],
             case_url=result["caseUrl"],
             title=result["descriptionTitle"],
-            lot_area=result["lotArea"],
+            lot_area=result.get("lotArea"),
             weighted_area=result.get("weightedArea"),
             image=sorted(
                 result["defaultImage"]["imageSources"],
@@ -484,6 +524,7 @@ class Home(BaseModel):
             )[0],
             price_change_percentage=result.get("priceChangePercentage"),
             last_updated=datetime.date.today(),
+            raw_json=json.dumps(result),
         )
 
     @field_validator("energy_label", mode="before")
@@ -657,3 +698,39 @@ class Home(BaseModel):
         self.noise = noise
         self.school = school
         self.school_travel_time = travel_time
+
+    def flatten(self) -> FlatHome:
+        """Flatten the home data.
+
+        This method returns a FlatHome object with all the data from the home
+        """
+        parameters = self.model_dump()
+
+        if self.coordinates is not None:
+            parameters["coord_lat"] = self.coordinates.lat
+            parameters["coord_lon"] = self.coordinates.lon
+
+        if self.trip is not None:
+            parameters["trip_duration"] = self.trip.duration
+            parameters["trip_changes"] = self.trip.mode_changes
+            parameters["trip_methods"] = self.trip.methods_as_string
+            parameters["trip_description"] = self.trip.description
+
+        if self.noise is not None:
+            parameters["noise_dB_min"] = self.noise.dB_min
+            parameters["noise_dB_max"] = self.noise.dB_max
+
+        if self.school is not None:
+            parameters["school_name"] = self.school.name
+        if self.school_travel_time is not None:
+            parameters["school_bike_distance"] = self.school_travel_time.distance
+            parameters["school_bike_duration"] = self.school_travel_time.duration
+
+        return FlatHome(**parameters)
+
+    def export(self) -> dict:
+        """Export the home data to a csv-ready dict.
+
+        First it flattens the data, then it dumps it to a dict.
+        """
+        return self.flatten().model_dump(mode="json")

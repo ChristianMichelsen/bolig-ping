@@ -4,7 +4,7 @@ from pathlib import Path
 
 from rich import print
 
-from bolig_ping.data_models import SearchQuery
+from bolig_ping.data_models import AddressType, SearchQuery
 
 # %%
 
@@ -18,17 +18,18 @@ MUNICIPALITIES = [
 
 GIS_DIR = Path("data") / "gis"
 
+ADDRESS_TYPE: list[AddressType] = [
+    "villa",
+    "rækkehus",
+    "villalejlighed",
+]
 
 # %%
 
 query = SearchQuery(
-    address_type=[
-        "villa",
-        "rækkehus",
-        "villalejlighed",
-    ],
-    # min_price=7_500_000,
-    min_price=10_500_000,
+    address_type=ADDRESS_TYPE,
+    min_price=7_500_000,
+    # min_price=10_500_000,
     max_price=10_700_000,
     min_size=110,
     max_size=250,
@@ -46,6 +47,7 @@ if homes is None:
 
 
 home = homes[0]
+print(len(homes))
 print(home)
 
 # %%
@@ -56,11 +58,18 @@ home.case_url
 home.to_html()
 print(home.to_text())
 
+# %%
+
+print(home.flatten().model_dump(mode="json"))
+print(home.flatten().model_dump(mode="json").keys())
+
 
 # %%
 
 home.extend_with_gis(municipalities=MUNICIPALITIES, gis_dir=GIS_DIR)
 print(home.to_text())
 
-
 # %%
+
+
+print(home.export())

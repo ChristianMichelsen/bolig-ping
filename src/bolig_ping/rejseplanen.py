@@ -357,6 +357,11 @@ class Trip(BaseModel):
         return [leg.method for leg in self.legs]
 
     @property
+    def methods_as_string(self) -> str:
+        """Get the methods of transport for the trip as a single string."""
+        return ",".join([m.name.replace("_", "-") for m in self.methods])
+
+    @property
     def description(self) -> str:
         """Get a description of the trip."""
         description = "Trip description: \n"
