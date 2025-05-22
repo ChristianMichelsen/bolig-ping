@@ -10,6 +10,7 @@ from typing import Literal, Self
 import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
+from tqdm.auto import tqdm
 
 from bolig_ping import gis_schools, google_maps, rejseplanen
 from bolig_ping.gis_noise import GisNoise, Noise
@@ -302,6 +303,22 @@ class SearchQuery(BaseModel):
 
         return url
 
+    def _results_to_homes(self, results: list[dict]) -> list["Home"]:
+        homes: list[Home] = []
+        for result in results:
+            try:
+                home = Home.from_nested_dict(result)
+                if home.address_type in self.address_type:
+                    homes.append(home)
+                else:
+                    logger.warning(
+                        f"Address type {home.address_type} not in {self.address_type}"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not parse result {result['caseUrl']}: {e}")
+                continue
+        return homes
+
     def get_homes(self) -> list["Home"] | None:
         """Get the results for the search query.
 
@@ -318,19 +335,31 @@ class SearchQuery(BaseModel):
         if results is None:
             return None
 
-        homes: list[Home] = []
-        for result in results:
-            try:
-                home = Home.from_nested_dict(result)
-                if home.address_type in self.address_type:
-                    homes.append(home)
-                else:
-                    logger.warning(
-                        f"Address type {home.address_type} not in {self.address_type}"
-                    )
-            except Exception as e:
-                logger.warning(f"Could not parse result {result['caseUrl']}: {e}")
-                continue
+        num_results = result_dict["totalHits"]
+        num_pages = num_results // len(results)
+        if num_results % len(results) != 0:
+            num_pages += 1
+
+        homes = self._results_to_homes(results)
+
+        # Scrape the remaining pages
+        if num_pages > 1:
+            desc = "Scraping homes from boligsiden.dk"
+            with tqdm(desc=desc, total=num_results) as pbar:
+                pbar.update(len(homes))
+                for page_idx in range(2, num_pages + 1):
+                    url = self.get_url(page=page_idx)
+                    response = requests.get(url=url)
+                    response.raise_for_status()
+                    result_dict = json.loads(response.text)
+                    results = result_dict["cases"]
+                    new_homes = self._results_to_homes(results)
+                    homes.extend(new_homes)
+                    homes = list(set(homes))
+                    pbar.update(len(new_homes))
+
+            # Ensure that the progress bar is at 100% at the end
+            pbar.n = pbar.total
 
         return homes
 
@@ -443,7 +472,7 @@ class BaseHome(BaseModel):
     basement_area: int | None = Field(ge=0)
     case_id: str
     case_url: str
-    title: str
+    title: str | None = None
     lot_area: int | None = Field(default=None, ge=0)
     weighted_area: float | None = Field(ge=0)
     price_change_percentage: float | None = None
@@ -514,7 +543,7 @@ class Home(BaseHome):
             basement_area=result.get("basementArea"),
             case_id=result["caseID"],
             case_url=result["caseUrl"],
-            title=result["descriptionTitle"],
+            title=result.get("descriptionTitle"),
             lot_area=result.get("lotArea"),
             weighted_area=result.get("weightedArea"),
             image=sorted(

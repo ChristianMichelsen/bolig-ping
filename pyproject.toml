@@ -22,6 +22,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "selenium>=4.32.0",
+    "tinydb>=4.8.2",
     "tqdm>=4.67.1",
     "yagmail>=0.15.293",
 ]

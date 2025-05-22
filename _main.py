@@ -1,8 +1,11 @@
 # %%
 
+import datetime
 from pathlib import Path
 
 from rich import print
+from tinydb import TinyDB, where
+from tqdm.auto import tqdm
 
 from bolig_ping.data_models import AddressType, SearchQuery
 
@@ -23,6 +26,12 @@ ADDRESS_TYPE: list[AddressType] = [
     "rækkehus",
     "villalejlighed",
 ]
+
+MAX_TRIP_DURATION = 40
+
+# %%
+
+db = TinyDB("data/db.json")
 
 # %%
 
@@ -60,16 +69,39 @@ print(home.to_text())
 
 # %%
 
-print(home.flatten().model_dump(mode="json"))
-print(home.flatten().model_dump(mode="json").keys())
+today = datetime.date.today()
+
+i_update = 0
+i_new = 0
+
+new_homes = []
+
+for home in tqdm(homes):
+    query = where("case_url") == home.case_url
+
+    if db.contains(query):
+        d_update = {
+            "last_updated": str(today),
+            "price": home.price,
+            "time_on_market": home.time_on_market,
+            "price_change_percentage": home.price_change_percentage,
+            "raw_json": home.raw_json,
+        }
+        db.update(d_update, query)
+        i_update += 1
+
+    else:
+        home.extend_with_gis(municipalities=MUNICIPALITIES, gis_dir=GIS_DIR)
+        flat_home = home.export()
+        flat_home["day_added"] = str(today)
+        db.insert(flat_home)
+        new_homes.append(flat_home)
+        i_new += 1
 
 
 # %%
 
-home.extend_with_gis(municipalities=MUNICIPALITIES, gis_dir=GIS_DIR)
-print(home.to_text())
+query_new = where("day_added") == str(today)
+query_trip_duration = where("trip_duration") < MAX_TRIP_DURATION
 
-# %%
-
-
-print(home.export())
+db.search(query_new | query_trip_duration)
