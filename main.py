@@ -1,4 +1,4 @@
-# %%
+"""Main script to scrape and update the database with new homes from Boligsiden."""
 
 import datetime
 from pathlib import Path
@@ -7,7 +7,7 @@ from rich import print
 from tinydb import TinyDB, where
 from tqdm.auto import tqdm
 
-from bolig_ping.data_models import AddressType, SearchQuery
+from bolig_ping.data_models import AddressType, FlatHome, SearchQuery
 
 # %%
 
@@ -64,10 +64,12 @@ today = datetime.date.today()
 
 i_update = 0
 i_new = 0
+i_new_price = 0
 
-new_prices = []
-new_homes = []
+new_prices: list[FlatHome] = []
+new_homes: list[FlatHome] = []
 
+print("Comparing the homes to the existing database...")
 for home in tqdm(homes):
     query = where("case_url") == home.case_url
 
@@ -79,7 +81,7 @@ for home in tqdm(homes):
         old_price = db.search(query)[0]["price"]
         new_price = home.price
         if old_price != new_price:
-            new_prices.append(home)
+            new_prices.append(home.flatten())
             print(f"Price change detected: {old_price} -> {new_price}")
 
         d_update = {
@@ -94,12 +96,12 @@ for home in tqdm(homes):
 
     else:
         home.extend_with_gis(municipalities=MUNICIPALITIES, gis_dir=GIS_DIR)
-        flat_home = home.export()
-        flat_home["day_added"] = str(today)
-        db.insert(flat_home)
+        flat_home = home.flatten()
+        flat_home_json = flat_home.model_dump(mode="json")
+        flat_home_json["day_added"] = str(today)
+        db.insert(flat_home_json)
         new_homes.append(flat_home)
         i_new += 1
-
 
 # Find homes that are still for sale by checking if the last updated date is today
 query_still_for_sale = where("last_updated") == str(today)
@@ -119,7 +121,10 @@ print(f"Number of homes not for sale anymore: {N_not_for_sale}")
 
 # %%
 
-query_trip_duration = where("trip_duration") < MAX_TRIP_DURATION
-query_good_houses = query_still_for_sale & query_trip_duration
-good_homes = db.search(query_good_houses)
-len(good_homes)
+print("New homes:")
+for home in new_homes:
+    home.to_text()
+
+print("New prices:")
+for home in new_prices:
+    home.to_text()

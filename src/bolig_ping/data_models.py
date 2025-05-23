@@ -499,6 +499,62 @@ class FlatHome(BaseHome):
     school_bike_duration: float | None = None
     raw_json: str = Field(repr=False)
 
+    def _get_components(self) -> list[str]:
+        components = []
+        components.append(
+            f"Pris: {dk_format(self.price)} kr."
+            f" ({dk_format(self.per_area_price)} kr./m²)"
+        )
+        if self.address_type is not None:
+            components.append(f"Boligtype: {self.address_type}")
+        if self.num_rooms is not None:
+            components.append(
+                f"Antal værelser: {self.num_rooms}"
+                f" ({self.bathrooms} badeværelser, {self.toilets} toiletter)"
+            )
+        if self.size is not None:
+            components.append(f"Boligareal: {self.size} m²")
+        if self.basement_area is not None:
+            components[-1] += f"(kælder: {self.basement_area} m²)"
+        if self.trip_duration is not None:
+            components.append(f"Rejsetid: {self.trip_duration:.0f} min")
+        if self.energy_label is not None:
+            components.append(f"Energimærke: {self.energy_label}")
+        if self.year is not None:
+            components.append(f"Bygget: {self.year}")
+        if self.time_on_market is not None:
+            components.append(f"Liggetid: {self.time_on_market} dage")
+        if self.monthly_fee is not None:
+            components.append(
+                f"Mdl. ejerudgifter: {dk_format(self.monthly_fee)} kr./md"
+            )
+        if self.noise_dB_min is not None or self.noise_dB_max is not None:
+            components.append(f"Støj: {self.noise_dB_min} - {self.noise_dB_max} dB")
+        if (
+            self.school_name is not None
+            and self.school_bike_duration is not None
+            and self.school_bike_distance is not None
+        ):
+            components.append(
+                f"Skole: {self.school_name}"
+                f" ({self.school_bike_distance:.1f} km"
+                f", {self.school_bike_duration:.0f} min)"
+            )
+        if self.title is not None:
+            components.append(f"Titel: {self.title}")
+
+        return components
+
+    def to_text(self) -> str:
+        """Get the home as a text string.
+
+        Returns:
+            The home as a text string.
+        """
+        components = [f"URL: {self.case_url}", f"Addresse: {self.address}"]
+        components += self._get_components()
+        return "\n".join(components)
+
 
 class Home(BaseHome):
     """A search result from the Boligsiden API."""
