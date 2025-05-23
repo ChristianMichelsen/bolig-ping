@@ -56,16 +56,7 @@ if homes is None:
 
 
 home = homes[0]
-print(len(homes))
-print(home)
-
-# %%
-
-home.case_id
-home.case_url
-
-home.to_html()
-print(home.to_text())
+print(f"Found a total of {len(homes)} homes from Boligsiden.")
 
 # %%
 
@@ -74,15 +65,26 @@ today = datetime.date.today()
 i_update = 0
 i_new = 0
 
+new_prices = []
 new_homes = []
 
 for home in tqdm(homes):
     query = where("case_url") == home.case_url
 
-    if db.contains(query):
+    # Check if the home is already in the database
+    if db.count(query) > 1:
+        raise ValueError("Duplicate entry in database.")
+
+    elif db.count(query) == 1:
+        old_price = db.search(query)[0]["price"]
+        new_price = home.price
+        if old_price != new_price:
+            new_prices.append(home)
+            print(f"Price change detected: {old_price} -> {new_price}")
+
         d_update = {
             "last_updated": str(today),
-            "price": home.price,
+            "price": new_price,
             "time_on_market": home.time_on_market,
             "price_change_percentage": home.price_change_percentage,
             "raw_json": home.raw_json,
@@ -99,9 +101,25 @@ for home in tqdm(homes):
         i_new += 1
 
 
+# Find homes that are still for sale by checking if the last updated date is today
+query_still_for_sale = where("last_updated") == str(today)
+db.update({"still_for_sale": True}, query_still_for_sale)
+db.update({"still_for_sale": False}, ~query_still_for_sale)
+
 # %%
 
-query_new = where("day_added") == str(today)
-query_trip_duration = where("trip_duration") < MAX_TRIP_DURATION
+query_still_for_sale = where("still_for_sale") == True  # noqa: E712
+N_still_for_sale = db.count(query_still_for_sale)  # noqa: E712
+N_not_for_sale = db.count(~query_still_for_sale)  # noqa: E712
 
-db.search(query_new | query_trip_duration)
+print(f"Added {i_new} new home(s)")
+print(f"Updated {i_update} homes ({len(new_prices)} new prices)")
+print(f"Number of homes still for sale: {N_still_for_sale}")
+print(f"Number of homes not for sale anymore: {N_not_for_sale}")
+
+# %%
+
+query_trip_duration = where("trip_duration") < MAX_TRIP_DURATION
+query_good_houses = query_still_for_sale & query_trip_duration
+good_homes = db.search(query_good_houses)
+len(good_homes)
