@@ -1,8 +1,12 @@
 """Main script to scrape and update the database with new homes from Boligsiden."""
 
+# %%
+
 import datetime
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 from rich import print
 from tinydb import TinyDB, where
 from tqdm.auto import tqdm
@@ -123,8 +127,34 @@ print(f"Number of homes not for sale anymore: {N_not_for_sale}")
 
 print("New homes:")
 for home in new_homes:
-    home.to_text()
+    print(home.to_text())
+
+# %%
 
 print("New prices:")
 for home in new_prices:
-    home.to_text()
+    print(home.to_text())
+
+# %%
+
+
+query_trip_duration = where("trip_duration") < MAX_TRIP_DURATION
+query_good_homes = query_still_for_sale & query_trip_duration
+df = pd.DataFrame(db.search(query_good_homes))
+
+
+for address_type, group in df.groupby("address_type"):
+    if address_type == "villa":
+        break
+
+group = group.sort_values("trip_duration")
+
+for i, (_, row) in enumerate(group.iterrows()):
+    flat_home = FlatHome(**row.replace({np.nan: None}))
+    print(flat_home.to_text())
+    print("")
+
+    if i > 10:
+        break
+
+# %%
