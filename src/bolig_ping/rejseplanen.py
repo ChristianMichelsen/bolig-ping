@@ -241,6 +241,7 @@ class TransportationMethod(StrEnum):
     S_TRAIN = "prod_comm"
     REGIONAL_TRAIN = "prod_ic"
     LOCAL_TRAIN = "prod_lokalbane"
+    PLUS_TUR = "prod_flextur"
 
 
 class LegProductIcon(BaseModel):
@@ -299,15 +300,15 @@ class JNYLeg(BaseLeg):
     JNY = Public Transport
     """
 
-    JourneyDetailRef: dict | None
     JourneyStatus: str | None
     JourneyDetail: dict | None
     number: str | None
     category: str | None
     reachable: bool | None
     direction: str | None
-    directionFlag: str | None
     Notes: dict | None = None
+    directionFlag: str | None = None
+    JourneyDetailRef: dict | None = None
     minimumChangeDuration: str | None = None
 
 

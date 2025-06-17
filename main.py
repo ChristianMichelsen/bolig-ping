@@ -99,7 +99,12 @@ for home in tqdm(homes):
         i_update += 1
 
     else:
-        home.extend_with_gis(municipalities=MUNICIPALITIES, gis_dir=GIS_DIR)
+        # home.address
+        home.extend_with_gis(
+            municipalities=MUNICIPALITIES,
+            gis_dir=GIS_DIR,
+            date="2025-07-28",
+        )
         flat_home = home.flatten()
         flat_home_json = flat_home.model_dump(mode="json")
         flat_home_json["day_added"] = str(today)

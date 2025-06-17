@@ -198,6 +198,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "requests" },
+    { name = "retry-reloaded" },
     { name = "selenium" },
     { name = "tinydb" },
     { name = "tqdm" },
@@ -238,6 +239,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "requests", specifier = ">=2.32.3" },
+    { name = "retry-reloaded", specifier = ">=0.0.8" },
     { name = "selenium", specifier = ">=4.32.0" },
     { name = "tinydb", specifier = ">=4.8.2" },
     { name = "tqdm", specifier = ">=4.67.1" },
@@ -2965,6 +2967,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/70/2bf7780ad2d390a8d301ad0b550f1581eadbd9a20f896afe06353c2a2913/requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760", size = 131218, upload-time = "2024-05-29T15:37:49.536Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/9b/335f9764261e915ed497fcdeb11df5dfd6f7bf257d4a6a2a686d80da4d54/requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6", size = 64928, upload-time = "2024-05-29T15:37:47.027Z" },
+]
+
+[[package]]
+name = "retry-reloaded"
+version = "0.0.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/3c/59ad0602a926a5563173a3cc882917cf0899cd06f546d71ab35baba57d59/retry_reloaded-0.0.8.tar.gz", hash = "sha256:9ed72abb0039b40cfd2bd7b8fae65d0d00cf0ef3bfcefbdb0b54e670d837ba44", size = 13375, upload-time = "2024-09-04T11:35:09.306Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/40/5371313061dc7bf819860c1c8beda87cae5e723561022cee1799b0269bff/retry_reloaded-0.0.8-py3-none-any.whl", hash = "sha256:889df9466546495258f1b8e91e3c4242cc06f48a0d6db47908de5a9c5c256c6e", size = 11980, upload-time = "2024-09-04T11:35:07.945Z" },
 ]
 
 [[package]]

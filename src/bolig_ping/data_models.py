@@ -10,6 +10,7 @@ from typing import Literal, Self
 import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
+from retry_reloaded import retry
 from tqdm.auto import tqdm
 
 from bolig_ping import gis_schools, google_maps, rejseplanen
@@ -728,13 +729,14 @@ class Home(BaseHome):
         components += self._get_components()
         return "\n".join(components)
 
+    @retry(max_retries=5)
     def extend_with_gis(
         self,
         municipalities: list[str],
         gis_dir: Path,
         destId: str = "8600646",  # (Nørreport st)
         originBike: str = "1,0,20000",
-        date: str = "2025-06-16",
+        date: str = "2025-07-28",
         time: str = "08:00",
     ) -> None:
         """Extend the home with GIS data."""

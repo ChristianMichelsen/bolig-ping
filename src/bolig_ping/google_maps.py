@@ -172,7 +172,10 @@ def get_travel_time(
     mode: TravelMode,
     departure_time: datetime | str | float | int | None = None,
 ) -> TravelTime:
-    """Get travel time between two coordinates using Google Maps Distance Matrix API."""
+    """Get travel time between two coordinates using Google Maps Distance Matrix API.
+
+    https://console.cloud.google.com/google/maps-apis/credentials
+    """
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
 
     if departure_time is not None:
